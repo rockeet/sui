@@ -2,6 +2,22 @@
 <img src="https://raw.githubusercontent.com/MystenLabs/sui/refs/heads/main/docs/site/static/img/logo.svg" alt="Logo" width="100" height="100">
 </p>
 
+# Sui with [ToplingDB](https://github.com/topling/toplingdb)
+Sui using rust-rocksdb as storage backend, we migrate rust-rocksdb to
+[rust-toplingdb](https://github.com/topling/rust-toplingdb) with very little
+changes, just path the git repository.
+
+To use full ToplingDB capability
+in **Sui**, env var `TOPLINGDB_EASY_MIGRATE_CONF` should be defined to
+specify ToplingDB YAML config file, such file is bundled: [topling_sui.yaml](crates/typed-store/config/topling_sui.yaml), you
+can run Sui tests with:
+
+```bash
+env TOPLINGDB_EASY_MIGRATE_CONF=`realpath crates/typed-store/config/topling_sui.yaml` \
+    SUI_SKIP_SIMTESTS=1 \
+    cargo nextest run --workspace --no-fail-fast -j `nproc`
+```
+
 # Welcome to Sui
 
 [![Github release](https://img.shields.io/github/v/release/MystenLabs/sui.svg?sort=semver)](https://github.com/MystenLabs/sui/releases/latest)
