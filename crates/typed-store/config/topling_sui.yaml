@@ -1,0 +1,161 @@
+# Copyright (c) Topling, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# ToplingDB reference configuration for Sui.
+# Deploy by setting env: TOPLINGDB_EASY_MIGRATE_CONF=/path/to/this/file
+
+# ====== HTTP Monitoring ======
+# sui using ToplingDB by env TOPLINGDB_EASY_MIGRATE_CONF, web is not supported
+http:
+  document_root: /tmp/toplingdb_web
+  listening_ports: '2011'
+
+# ====== Block Cache ======
+Cache:
+  lru_cache:
+    class: LRUCache
+    params:
+      capacity: 16G
+      num_shard_bits: -1
+      strict_capacity_limit: false
+      high_pri_pool_ratio: 0.5
+      use_adaptive_mutex: false
+      metadata_charge_policy: kFullChargeCacheMetadata
+
+# ====== MemTable Definitions (RocksDB native + ToplingDB, for A/B testing) ======
+MemTableRepFactory:
+  skiplist:
+    class: SkipList
+    params:
+      lookahead: 0
+  cspp:
+    class: cspp
+    params:
+      mem_cap: 8G
+      use_vm: true
+      chunk_size: 256K
+      convert_to_sst: kFileMmap
+      sync_sst_file: false
+      token_use_idle: true
+      read_by_writer_token: true
+
+# ====== Filter Policy ======
+FilterPolicy:
+  bloom:
+    class: BloomFilter
+    params:
+      bits_per_key: 10
+      use_block_based_builder: false
+
+# ====== SST TableFactory Definitions ======
+TableFactory:
+  # RocksDB built-in BlockBasedTable (for A/B testing)
+  rocksdb_bb:
+    class: BlockBasedTable
+    params:
+      checksum: kXXH3
+      block_size: 4K
+      block_restart_interval: 16
+      index_block_restart_interval: 1
+      metadata_block_size: 4K
+      enable_index_compression: true
+      block_cache: "${lru_cache}"
+      filter_policy: bloom
+
+  # ToplingDB SingleFastTable (best for monotonic/ordered keys)
+  fast:
+    class: SingleFastTable
+    params:
+      indexType: MainPatricia
+      keyPrefixLen: 0
+
+  # ToplingDB ToplingZipTable (high compression for large/higher levels)
+  zip:
+    class: ToplingZipTable
+    params:
+      indexType: Mixed_XL_256_32_FL
+      localTempDir: /tmp
+      indexNestLevel: 1
+      enableStatistics: false
+      warmupLevel: kIndex
+      acceptCompressionRatio: 0.8
+      offsetArrayBlockUnits: 128
+      sampleRatio: 0.01
+      checksumLevel: 0
+      debugLevel: 0
+      minDictZipValueSize: 30
+      minPreadLen: -1
+
+  # CSPP memtable flush output adapter (required by DispatcherTable readers)
+  cspp_memtab_sst:
+    class: CSPPMemTabTable
+    params: {}
+
+  # DispatcherTable: dispatch by compaction level
+  #   readers: C++ class name -> TableFactory entry name
+  #   level_writers: TableFactory entry name per output level
+  #   default: fallback for classes not matched in readers
+  dispatch:
+    class: DispatcherTable
+    params:
+      default: fast
+      readers:
+        SingleFastTable: fast
+        ToplingZipTable: zip
+        BlockBasedTable: rocksdb_bb
+        CSPPMemTabTable: cspp_memtab_sst
+      level_writers: [fast, fast, zip, zip, zip, zip, zip]
+
+# ====== Write Buffer Manager ======
+WriteBufferManager:
+  wbm:
+    class: WriteBufferManager
+    params:
+      buffer_size: 4G
+
+# ====== Column Family Options ======
+CFOptions:
+  default:
+    # memtable_factory: "${skiplist}"   # switch to RocksDB SkipList for A/B testing
+    memtable_factory: "${cspp}"
+    # table_factory: rocksdb_bb         # switch to RocksDB BlockBasedTable for A/B testing
+    table_factory: dispatch
+    # ---- Write ----
+    max_write_buffer_number: 4
+    write_buffer_size: 256M
+    # ---- Compaction ----
+    num_levels: 7
+    target_file_size_base: 32M
+    target_file_size_multiplier: 2
+    max_bytes_for_level_multiplier: 10
+    level_compaction_dynamic_level_bytes: false
+    level0_file_num_compaction_trigger: 4
+    level0_slowdown_writes_trigger: 20
+    level0_stop_writes_trigger: 36
+    # ---- Compression ----
+    compression: kSnappyCompression
+    compression_per_level:
+    - kNoCompression
+    - kSnappyCompression
+    - kSnappyCompression
+    - kSnappyCompression
+    - kSnappyCompression
+    - kSnappyCompression
+    - kZSTD
+
+# ====== DB Options ======
+DBOptions:
+  default:
+    create_if_missing: true
+    create_missing_column_families: true
+    allow_fallocate: false
+    inplace_update_support: false
+    WAL_size_limit_MB: 0
+    max_total_wal_size: 4G
+    max_background_flushes: 2
+    max_background_compactions: 13
+    max_subcompactions: 1
+    max_level1_subcompactions: 7
+    memtable_as_log_index: true
+    #unordered_write: true
+    write_buffer_manager: "${wbm}"
