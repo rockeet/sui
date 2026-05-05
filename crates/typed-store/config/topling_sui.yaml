@@ -156,6 +156,7 @@ DBOptions:
     max_background_compactions: 13
     max_subcompactions: 1
     max_level1_subcompactions: 7
-    memtable_as_log_index: true
+    #to turn on this option, must ensure existing RocksDB's all WAL log has been flushed
+    #memtable_as_log_index: true # not compatible to RocksDB WAL log
     #unordered_write: true
     write_buffer_manager: "${wbm}"
