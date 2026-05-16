@@ -9,6 +9,10 @@
 http:
   document_root: /tmp/toplingdb_web
   listening_ports: '2011'
+  auto_start_http: true
+
+permissions:
+  web_compact: true
 
 # ====== Block Cache ======
 Cache:
